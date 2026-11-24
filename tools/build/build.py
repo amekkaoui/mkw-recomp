@@ -265,6 +265,9 @@ def ninja_file(target: Target, gen: Path | None, out: Path, rt_extra: list[str],
     mkwgame.dll); else build/mkw with the game code linked in. runtime_only (with dist): the runtime alone, what a
     release ships and the CI builds, without the game's generated C."""
     inc = " ".join(f"-I{d}" for d in sorted({RUNTIME} | {p.parent for p in RUNTIME.rglob("*.h")}))
+    # the FidelityFX SDK's FSR 3 upscaler built into the Linux runtime (runtime/gfx/vk/exec/vk_ffxsdk_*.cpp)
+    ffx = ROOT / "third_party/FidelityFX"
+    inc += "".join(f" -I{ffx / d}" for d in ("sdk/include", "sdk/src/shared", "sdk/src/backends/shared", "spirv"))
     gen_inc = f"-I{gen}" if gen else ""  # --runtime-only has no generated C (it wrote -INone)
     gid = f'-DRT_GAME_ID=\\"{game_id()}\\"'
     pic = ["-fPIC"] if dist and target is LINUX else []

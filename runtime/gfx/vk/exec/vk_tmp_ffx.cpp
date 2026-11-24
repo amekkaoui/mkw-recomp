@@ -28,6 +28,16 @@ extern "C" {
 #include "vk_temporal.h"
 }
 
+#if defined(__linux__)
+// Linux: the FSR 3 upscaler of the FidelityFX SDK built into the runtime (vk_tmp_fsr3_sdk.cpp), AMD's API library
+// being Windows only. Frame generation stays unavailable there.
+extern "C" int vk_tmp_fsr3_sdk_load(void);
+extern "C" int vk_tmp_fsr3_sdk_upscale(VkCommandBuffer cb, const VkTmpRes *color, const VkTmpRes *depth,
+                                       const VkTmpRes *mv, const VkTmpRes *out, float jx, float jy, int reset,
+                                       float frame_ms, float znear, float zfar, float fov_y, int hdr, float sharpness);
+extern "C" void vk_tmp_fsr3_sdk_shutdown(void);
+#endif
+
 namespace {
 
 struct FfxApi {
@@ -302,6 +312,9 @@ FfxApi *load_explicit_fg_api(const char *override) {
 #endif
 
 FfxApi *fg_api() {
+#if defined(__linux__)
+    return nullptr;   // A stands for the built-in upscaler only (vk_tmp_ffx_load)
+#endif
     const char *override = cfg_get("MKW_FFX_FG_LIBRARY");
     if (override && *override) {
 #ifdef _WIN32
@@ -352,8 +365,11 @@ extern "C" int vk_tmp_ffx_load(void) {
     load_api_exports(A, m);
     rt_log("ffx[sr]: %s %s", A.path,
            A.ok ? "loaded" : "lacks one or more of the five API entry points: FSR 3.1 unavailable");
+#elif defined(__linux__)
+    A.ok = vk_tmp_fsr3_sdk_load();
+    snprintf(A.path, sizeof A.path, "built-in FidelityFX SDK 1.1.4");
 #else
-    rt_log("ffx: FSR 3.1 is only wired on Windows in this build");
+    rt_log("ffx: FSR 3.1 is only wired on Windows and Linux in this build");
 #endif
     return A.ok;
 }
@@ -362,6 +378,10 @@ extern "C" int vk_tmp_ffx_upscale(VkCommandBuffer cb, const VkTmpRes *color, con
                                   const VkTmpRes *out, float jx, float jy, int reset, float frame_ms, float znear,
                                   float zfar, float fov_y, int hdr, float sharpness) {
     if (!A.ok) return 0;
+#if defined(__linux__)
+    return vk_tmp_fsr3_sdk_upscale(cb, color, depth, mv, out, jx, jy, reset, frame_ms, znear, zfar, fov_y, hdr,
+                                   sharpness);
+#endif
     int changed = 0;
     if (!context_for(color->w, color->h, out->w, out->h, hdr, &changed)) return 0;
     if (changed) reset = 1;
@@ -627,6 +647,10 @@ extern "C" int vk_tmp_ffx_fg(VkCommandBuffer cb, const VkTmpFgInputs *in, const 
 }
 
 extern "C" void vk_tmp_ffx_shutdown(void) {
+#if defined(__linux__)
+    vk_tmp_fsr3_sdk_shutdown();
+    return;
+#endif
     if (A.ok) destroy_ctx();
     fg_destroy();
 }
